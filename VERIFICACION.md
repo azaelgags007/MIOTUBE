@@ -1,9 +1,19 @@
-# Verificación de MIOTUBE 2.1.0
+# Verificación de MIOTUBE 2.1.1
+
+## Corrección de PiP y alcance de la prueba
+
+- Comparado el código actual de Rutinas CDC con MIOTUBE.
+- Igualado el uso de iframe explícito y permisos de PiP/pantalla completa.
+- En iPhone/iPad, modo de reproducción nativo (`playsinline=0`) activado por defecto, con opción de volver al modo en página.
+- Replicada la apertura de la app YouTube con el respaldo web a los 700 ms de CDC.
+- Conservación del video, posición y tiempo al abrir YouTube; iframe conservado al volver al fondo vacío sin `inert` en el contenedor del video.
+- Probadas las ramas de iPhone y escritorio en DOM: permisos, selector de modo, recreación solo al cambiar ese modo, persistencia y foco del fondo vacío.
+- **PiP nativo aún requiere prueba en el iPhone del usuario.** Una compilación correcta o una prueba de DOM no verifica la ventana del sistema iOS.
 
 ## Comprobado
 
 - Compilación TypeScript y Vite de producción.
-- Ocho pruebas de lógica y servidor: validación de dominios y protocolos, extracción de JSON, conservación de huecos y posiciones originales, repetidos, páginas siguientes, entradas inválidas y enlace de video con posición/tiempo.
+- Diez pruebas de lógica y servidor: validación de dominios y protocolos, extracción de JSON, conservación de huecos y posiciones originales, repetidos, páginas siguientes, entradas inválidas y enlace de video con posición/tiempo.
 - Prueba de integración de la interfaz en DOM: pantalla vacía sin botones permanentes, accesos temporales, aislamiento de foco del reproductor mientras se ve el fondo, fondo persistente, listas de la versión anterior, controles unificados de reproducción/pausa, menús, expansión de títulos, búsqueda numérica, selección de la posición original 3 que corresponde al índice reproducible 1, iframe conservado al compactar y volver arriba, última reproducción, reanudación, favoritos, entradas inválidas y error de la lista con acceso de respaldo.
 - Consultas reales del módulo de metadatos a dos listas: «musica concentracion», 88 elementos; y la lista de acceso «Rápido» de CDC, 9 elementos. El título, autor, posición y miniatura provienen de YouTube.
 - Paginación verificada con respuestas de prueba que preservan el salto de la posición 1 a la 101. No se encontró una lista larga accesible para validar en vivo páginas posteriores.

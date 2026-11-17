@@ -1,12 +1,13 @@
 import {useEffect,useRef,useState} from 'react';
 import type {Bookmark,Playlist,Track} from '../types';
 import {parseYouTubeUrl,watchUrl} from '../utils/youtube';
-import {loadBookmark,writeJson,ZOOM_MAX,ZOOM_MIN} from '../utils/storage';
+import {loadBookmark,readJson,writeJson,ZOOM_MAX,ZOOM_MIN} from '../utils/storage';
 import {loadYouTube,type YTPlayer} from '../utils/player';
 import {queueIndexForTrack,trackForQueueIndex} from '../utils/positions';
 import PlaylistLibrary from './PlaylistLibrary';
 import Icon from './Icon';
 import Popover from './Popover';
+import {configureYouTubeFrame,isAppleMobile,openYouTubeLikeCdc} from '../utils/pip';
 interface Props {
   playlists:Playlist[];activeUrl:string;onSelectUrl:(url:string)=>void;
   zoom:number;onZoomChange:(zoom:number)=>void;onGoToConfig:()=>void;onReturn:()=>void;
@@ -15,6 +16,8 @@ interface Props {
 interface Target {position:number;videoId:string|null;seconds:number;}
 export default function PlayerPanel({playlists,activeUrl,onSelectUrl,zoom,onZoomChange,onGoToConfig,onReturn,theme,onThemeChange}:Props) {
   const source=parseYouTubeUrl(activeUrl);
+  const appleMobile=isAppleMobile(navigator);
+  const [nativePlayback,setNativePlayback]=useState(()=>appleMobile && readJson('miotube_ios_native_playback',true));
   const [started,setStarted]=useState(false),[ready,setReady]=useState(false),[compact,setCompact]=useState(false);
   const [isPlaying,setIsPlaying]=useState(false);
   const [error,setError]=useState(''),[message,setMessage]=useState(''),[title,setTitle]=useState('');
@@ -66,11 +69,12 @@ export default function PlayerPanel({playlists,activeUrl,onSelectUrl,zoom,onZoom
     let cancelled=false,owned:YTPlayer|null=null;
     void loadYouTube().then(YT=>{
       if(cancelled||!mount.current) return;
-      const child=document.createElement('div');mount.current.replaceChildren(child);
+      const frame=document.createElement('iframe');
+      configureYouTubeFrame(frame,source.embedUrl!,location.origin,nativePlayback);
+      mount.current.replaceChildren(frame);
       const initial=pending.current ?? {position:1,videoId:source.videoId,seconds:0};
-      owned=new YT.Player(child,{
-        width:'100%',height:'100%',
-        playerVars:{playsinline:1,controls:1,origin:location.origin,rel:0},
+      // Attach controls to this explicit iframe, as CDC does. Keep its native permissions.
+      owned=new YT.Player(frame,{
         events:{
           onReady:()=>{
             if(cancelled||!owned) return;
@@ -112,7 +116,7 @@ export default function PlayerPanel({playlists,activeUrl,onSelectUrl,zoom,onZoom
     };
     // Source changes remount PlayerPanel; navigating the blank screen never recreates the player.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[started,retry]);
+  },[started,retry,nativePlayback]);
   function select(target:Target) {
     pending.current=target;setError('');setMessage('');
     if(!started) setStarted(true);else applyPending();
@@ -142,8 +146,18 @@ export default function PlayerPanel({playlists,activeUrl,onSelectUrl,zoom,onZoom
       w.addEventListener('pagehide',()=>{if(host.current&&slot.current)slot.current.append(host.current);pip.current=null;},{once:true});
     } catch {setMessage('No se pudo abrir la ventana flotante. Puedes abrir el video en YouTube.');}
   }
-  const mobileApp=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  const mobileApp=appleMobile||/Android/i.test(navigator.userAgent);
   const external=watchUrl(source.listId,videoId,position,last.current?.seconds||0);
+  function changeNativePlayback(value:boolean){
+    capture();
+    pending.current=last.current??pending.current??{position:1,videoId:source.videoId,seconds:0};
+    setReady(false);setMessage('');setError('');
+    writeJson('miotube_ios_native_playback',value);setNativePlayback(value);
+  }
+  function openYouTubeForPip(){
+    capture();
+    openYouTubeLikeCdc(watchUrl(source.listId,last.current?.videoId??videoId,last.current?.position??position,last.current?.seconds??0));
+  }
   function togglePlayback(){
     setMessage('');
     if(!started){jump();return;}
@@ -154,6 +168,7 @@ export default function PlayerPanel({playlists,activeUrl,onSelectUrl,zoom,onZoom
     <header className="player-heading">
       <h1 className="wordmark"><span className="brand-dot"/>MIOTUBE</h1>
       <div className="header-actions">
+        {source.embedUrl&&(pipSupported?<button className="icon-button" aria-label="Abrir ventana PiP" title="Ventana flotante PiP" disabled={!ready} onClick={()=>void openPip()}><Icon name="expand"/></button>:mobileApp?<button className="icon-button" aria-label="Abrir YouTube para PiP" title="Abrir YouTube para PiP" onClick={openYouTubeForPip}><Icon name="external"/></button>:null)}
         <button className="icon-button" aria-label="Volver a pantalla vacía" title="Pantalla vacía" onClick={onReturn}><Icon name="blank"/></button>
         <Popover label="Apariencia" icon={theme==='black'?'moon':'sun'}>
           <p className="menu-label">Fondo de pantalla</p>
@@ -163,15 +178,19 @@ export default function PlayerPanel({playlists,activeUrl,onSelectUrl,zoom,onZoom
           </div>
         </Popover>
         <Popover label="Más opciones">
+          {appleMobile&&<>
+            <label className="menu-check"><span>Reproducción como CDC</span><input type="checkbox" checked={nativePlayback} onChange={e=>changeNativePlayback(e.target.checked)}/></label>
+            <p className="info-copy">Permite la pantalla completa de iPhone. Para probar PiP, inicia el video desde sus propios controles y usa los controles de iPhone disponibles.</p>
+          </>}
           {started&&<>
             <label className="menu-slider" htmlFor="zoom"><span>Tamaño del video <span>{zoom}%</span></span><input id="zoom" type="range" min={ZOOM_MIN} max={ZOOM_MAX} value={zoom} onChange={e=>onZoomChange(Number(e.target.value))}/></label>
             <label className="menu-check"><span>Vista compacta</span><input type="checkbox" checked={compact} onChange={e=>setCompact(e.target.checked)}/></label>
           </>}
           {source.embedUrl&&<a className="menu-item" href={external} target="_blank" rel="noreferrer"><Icon name="external" size={17}/>Abrir en YouTube</a>}
-          {source.embedUrl&&mobileApp&&<a className="menu-item" href={external.replace('https://www.youtube.com/','youtube://www.youtube.com/')}><Icon name="external" size={17}/>Abrir en la app de YouTube</a>}
+          {source.embedUrl&&mobileApp&&<button className="menu-item" onClick={openYouTubeForPip}><Icon name="external" size={17}/>Abrir YouTube para PiP</button>}
           {started&&pipSupported&&<button className="menu-item" disabled={!ready} onClick={()=>void openPip()}><Icon name="expand" size={17}/>Ventana flotante</button>}
           {started&&<button className="menu-item" onClick={restart}><Icon name="refresh" size={17}/>Recargar reproductor</button>}
-          <details className="menu-info"><summary>Información de reproducción</summary><p>El reproductor permanece al final cuando vuelves a la pantalla vacía. La continuidad fuera de la app o con el teléfono bloqueado depende de YouTube y del navegador.</p></details>
+          <details className="menu-info"><summary>Información de reproducción</summary><p>MIOTUBE 2.1.1</p><p>El reproductor permanece al final cuando vuelves a la pantalla vacía. La continuidad fuera de la app o con el teléfono bloqueado depende de YouTube y del navegador.</p></details>
         </Popover>
       </div>
     </header>

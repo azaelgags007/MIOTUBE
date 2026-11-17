@@ -15,7 +15,7 @@ const items=[{position:1,videoId:'71aiTz_Xwsw',title:'Primera canción',thumbnai
 await page.route('**/api/playlist?**',route=>route.fulfill({json:{items,nextCursor:null,title:'Prueba',fetchedAt:new Date().toISOString(),notices:[]}}));
 await page.route('https://www.youtube.com/iframe_api',route=>route.fulfill({contentType:'application/javascript',body:`
 window.calls=[];window.YT={Player:class {
- constructor(el,options){this.options=options;this.index=0;this.time=0;this.state=1;this.frame=document.createElement('iframe');this.frame.src='about:blank';el.replaceWith(this.frame);setTimeout(()=>options.events.onReady(),20);}
+ constructor(el,options){this.options=options;this.index=0;this.time=0;this.state=1;this.frame=el.tagName==='IFRAME'?el:document.createElement('iframe');if(this.frame!==el){this.frame.src='about:blank';el.replaceWith(this.frame);}setTimeout(()=>options.events.onReady(),20);}
  getIframe(){return this.frame;} getPlaylist(){return ['71aiTz_Xwsw','dQw4w9WgXcQ'];} getPlaylistIndex(){return this.index;}getCurrentTime(){return this.time;}getPlayerState(){return this.state;}
  getVideoData(){return {video_id:this.getPlaylist()[this.index],title:this.index===0?'Primera canción':'Canción de prueba'};}
  loadPlaylist(o){this.index=Math.min(o.index||0,1);this.time=o.startSeconds||0;calls.push(['load',o]);this.options.events.onStateChange({data:1});}

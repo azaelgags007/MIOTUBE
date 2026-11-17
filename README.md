@@ -1,4 +1,4 @@
-# MIOTUBE · Phonoplayer 2.1.0
+# MIOTUBE · Phonoplayer 2.1.1
 
 Reproductor personal de YouTube instalable en iPhone como PWA. Pantalla inicial completamente blanca o negra, accesos temporales al tocar y reproductor al final de la página.
 
@@ -17,6 +17,16 @@ Reproductor personal de YouTube instalable en iPhone como PWA. Pantalla inicial 
 - Reanudación voluntaria del último video y segundo registrado por lista. No se reproduce automáticamente al abrir la aplicación.
 - Abrir el video seleccionado en YouTube, enlace a la app en móviles y ventana flotante en navegadores que admitan Document Picture-in-Picture.
 - Mensajes de conexión, lista privada, videos no disponibles, reproducción automática bloqueada y opción de reintentar.
+
+## Ajuste de PiP en iPhone (2.1.1)
+
+El reproductor ahora se adjunta a un iframe explícito con permisos de pantalla completa y `picture-in-picture`, igual que en CDC. En iPhone/iPad se usa por defecto `playsinline=0`, equivalente al comportamiento de pantalla completa de CDC. En «Más opciones» puede cambiarse «Reproducción como CDC»; hacerlo recarga el reproductor conservando la última posición registrada.
+
+Para probar el recorrido de CDC dentro de la web, inicia el video desde sus propios controles y utiliza el modo de pantalla completa y los controles de iPhone disponibles. El acceso «Abrir YouTube para PiP» en la cabecera utiliza el mismo esquema de apertura y respaldo web a los 700 ms que CDC, conservando el video seleccionado y el tiempo registrado. Abrir YouTube no implica activar automáticamente PiP.
+
+El fondo vacío mantiene el mismo iframe activo, sin marcar su contenedor como `inert`; el foco de teclado se mantiene en los accesos de la pantalla vacía por separado. La ventana Document PiP para navegadores compatibles se conserva.
+
+Estas diferencias se verificaron en código y mediante pruebas automatizadas que simulan un iPhone. No constituyen una prueba de PiP nativo en un iPhone físico; se requiere confirmar ese resultado en el dispositivo donde CDC sí funciona.
 
 ## Uso
 
@@ -44,7 +54,7 @@ Para actualizar el proyecto existente, coloca el contenido de esta carpeta en la
 
 **Publica el proyecto completo, no solo `dist/`:** el listado necesita la función de servidor de `api/` y su módulo `server/`. Abrir `index.html` por doble clic o subir únicamente archivos estáticos no ejecuta esa función.
 
-Después de publicar, cierra y vuelve a abrir la PWA para recoger el nuevo service worker (`phonoplayer-v2.1.0`). Los favoritos y la reproducción se guardan localmente; no hay sincronización entre dispositivos.
+Después de publicar, cierra y vuelve a abrir la PWA para recoger el nuevo service worker (`phonoplayer-v2.1.1`). Los favoritos y la reproducción se guardan localmente; no hay sincronización entre dispositivos.
 
 ## Desarrollo y verificación
 

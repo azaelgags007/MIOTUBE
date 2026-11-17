@@ -45,3 +45,22 @@ test('server pagination uses public context and keeps absolute indices',async()=
   };
   try {const first=await getPlaylistPage('PL1234567890');const second=await getPlaylistPage('PL1234567890',first.nextCursor);assert.equal(second.items[0].position,101);assert.equal(second.nextCursor,null);}finally{globalThis.fetch=original;}
 });
+
+
+// CDC parity: iPhone handoff and presentation are tested independently of iOS PiP availability.
+import {isAppleMobile,openYouTubeLikeCdc} from '../src/utils/pip.ts';
+test('detects iPhone and desktop-mode iPad without changing Android playback',()=>{
+ assert.equal(isAppleMobile({userAgent:'iPhone Safari'}),true);
+ assert.equal(isAppleMobile({userAgent:'Macintosh Safari',platform:'MacIntel',maxTouchPoints:5}),true);
+ assert.equal(isAppleMobile({userAgent:'Android Chrome'}),false);
+ assert.equal(isAppleMobile({userAgent:'Macintosh Safari',platform:'MacIntel',maxTouchPoints:0}),false);
+});
+test('uses the CDC native YouTube handoff and 700ms web fallback without losing selection',()=>{
+ const callbacks=[];const opened=[];const launcher={location:{href:''},setTimeout:(cb,ms)=>{callbacks.push({cb,ms});},open:(...args)=>opened.push(args)};
+ const url=watchUrl('PL1234567890','71aiTz_Xwsw',37,125);
+ openYouTubeLikeCdc(url,launcher);
+ assert.equal(launcher.location.href,url.replace('https://www.youtube.com/','youtube://www.youtube.com/'));
+ assert.equal(callbacks[0].ms,700);callbacks[0].cb();
+ assert.deepEqual(opened,[[url,'_blank','noreferrer']]);
+ openYouTubeLikeCdc('https://evil.com/path',launcher);assert.equal(callbacks.length,1);
+});

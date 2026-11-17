@@ -9,7 +9,7 @@ let apiFailure=false;
 globalThis.fetch=async()=>apiFailure?Response.json({error:'La lista es privada.'},{status:404}):Response.json({items,nextCursor:null,title:'Prueba',fetchedAt:new Date().toISOString(),notices:[]});
 window.YT={Player:class {
   index=0;time=0;state=1;frame:HTMLIFrameElement;options:any;
-  constructor(el:HTMLElement,options:any){this.options=options;this.frame=document.createElement('iframe');el.replaceWith(this.frame);setTimeout(()=>options.events.onReady(),10);}
+  constructor(el:HTMLElement,options:any){this.options=options;this.frame=el.tagName==='IFRAME'?el as HTMLIFrameElement:document.createElement('iframe');if(el!==this.frame)el.replaceWith(this.frame);setTimeout(()=>options.events.onReady(),10);}
   getIframe(){return this.frame;}getPlaylist(){return queue;}getPlaylistIndex(){return this.index;}getCurrentTime(){return this.time;}getPlayerState(){return this.state;}
   getVideoData(){return {video_id:queue[this.index],title:this.index===0?'Primera canción':'Canción de prueba'};}
   loadPlaylist(o:any){this.index=Math.min(o.index||0,1);this.time=o.startSeconds||0;calls.push(['load',o]);this.options.events.onStateChange({data:1});}
@@ -44,6 +44,8 @@ fireEvent.keyDown(document,{key:'Escape'});
 fireEvent.click(screen.getByRole('button',{name:'Reproducir 3: Canción de prueba',exact:true}));
 await waitFor(()=>assert.ok(calls.some(c=>c[0]==='jump'&&c[1]===1)),{timeout:4000});
 const frame=document.querySelector('.video-mount iframe');assert.ok(frame);
+assert.match(frame.getAttribute('allow')||'',/picture-in-picture/);
+assert.equal(new URL(frame.getAttribute('src')!).searchParams.get('playsinline'),'1');
 fireEvent.click(screen.getByRole('button',{name:'Pausar',exact:true}));await screen.findByRole('button',{name:'Reproducir',exact:true});
 fireEvent.click(screen.getByRole('button',{name:'Reproducir',exact:true}));await screen.findByRole('button',{name:'Pausar',exact:true});
 fireEvent.click(screen.getByRole('button',{name:'Más opciones',exact:true}));
@@ -64,4 +66,35 @@ fireEvent.click(screen.getByRole('button',{name:'Solo favoritos',exact:true}));a
 fireEvent.change(screen.getByRole('spinbutton',{name:'Elemento de la lista'}),{target:{value:'0'}});fireEvent.click(screen.getByRole('button',{name:'Ir al elemento',exact:true}));assert.match(screen.getByRole('alert').textContent||'',/número entero/);
 apiFailure=true;fireEvent.click(screen.getByRole('button',{name:'Actualizar',exact:true}));await screen.findByText(/La lista es privada/);assert.ok(screen.getByRole('link',{name:'Abrir lista en YouTube ↗'}));
 cleanup();
-console.log('PASS UI: blank-screen reveal/hide and keyboard isolation, appearance persistence, unified play/pause, popovers, title expansion, numeric search/original position, favorites, retained iframe and resume, error fallback.');
+// Exercise the actual iPhone branch, not just the desktop layout.
+apiFailure=false;
+Object.defineProperty(navigator,'userAgent',{value:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile Safari/604.1',configurable:true});
+render(<App/>);enter();
+assert.ok(screen.getByRole('button',{name:'Abrir YouTube para PiP',exact:true}));
+fireEvent.click(screen.getByRole('button',{name:/Continuar donde me quedé/}));
+await waitFor(()=>assert.ok(screen.getByRole('button',{name:'Pausar',exact:true})),{timeout:4000});
+const iosFrame=document.querySelector('.video-mount iframe') as HTMLIFrameElement;
+assert.ok(iosFrame);assert.equal(new URL(iosFrame.src).searchParams.get('playsinline'),'0');
+assert.match(iosFrame.allow,/picture-in-picture/);assert.match(iosFrame.allow,/fullscreen/);assert.equal(iosFrame.allowFullscreen,true);
+fireEvent.click(screen.getByRole('button',{name:'Más opciones',exact:true}));
+const cdcMode=screen.getByRole('checkbox',{name:'Reproducción como CDC',exact:true}) as HTMLInputElement;
+assert.equal(cdcMode.checked,true);
+fireEvent.click(cdcMode);
+await waitFor(()=>assert.equal(new URL((document.querySelector('.video-mount iframe') as HTMLIFrameElement).src).searchParams.get('playsinline'),'1'));
+assert.equal(localStorage.getItem('miotube_ios_native_playback'),'false');
+fireEvent.click(screen.getByRole('checkbox',{name:'Reproducción como CDC',exact:true}));
+await waitFor(()=>assert.equal(new URL((document.querySelector('.video-mount iframe') as HTMLIFrameElement).src).searchParams.get('playsinline'),'0'));
+const retained=document.querySelector('.video-mount iframe');
+fireEvent.keyDown(document,{key:'Escape'});
+fireEvent.click(screen.getByRole('button',{name:'Volver a pantalla vacía',exact:true}));
+assert.equal(retained?.isConnected,true);
+assert.equal(retained?.closest('[inert]'),null);
+window.requestAnimationFrame=callback=>{window.setTimeout(()=>callback(0),0);return 1;};
+fireEvent.keyDown(document.getElementById('pantalla')!,{key:'Tab'});
+assert.ok(screen.getByRole('button',{name:'Ir a música / YouTube',exact:true}));
+await waitFor(()=>assert.ok(document.activeElement===screen.getByRole('button',{name:'Ir a música / YouTube',exact:true}))); 
+fireEvent.keyDown(document.activeElement!,{key:'Tab'});
+assert.ok(document.activeElement===screen.getByRole('button',{name:'Ocultar accesos',exact:true}));
+enter();assert.equal(document.querySelector('.video-mount iframe'),retained);
+cleanup();
+console.log('PASS UI: iPhone CDC-compatible native iframe/permissions, explicit web playback option, PiP shortcut, media preserved outside inert trees, blank-screen reveal/hide and keyboard isolation, appearance persistence, unified play/pause, popovers, title expansion, numeric search/original position, favorites, retained iframe and resume, error fallback.');

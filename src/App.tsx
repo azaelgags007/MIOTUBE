@@ -11,7 +11,7 @@ export default function App() {
   const [blank,setBlank]=useState(true),[access,setAccess]=useState(false);
   const [hint,setHint]=useState(()=>!readJson('miotube_blank_hint_seen',false));
   const hideTimer=useRef<number>();
-  const workspace=useRef<HTMLDivElement>(null);
+
   useEffect(()=>savePlaylists(playlists),[playlists]);
   useEffect(()=>saveActiveUrl(activeUrl),[activeUrl]);
   useEffect(()=>saveZoom(zoom),[zoom]);
@@ -23,7 +23,7 @@ export default function App() {
   },[theme]);
   useEffect(()=>{
     document.documentElement.classList.toggle('blank-active',blank);
-    if(workspace.current)workspace.current.inert=blank;
+    // Match CDC: never mark the media subtree inert; Safari owns native fullscreen/PiP.
     return ()=>document.documentElement.classList.remove('blank-active');
   },[blank]);
   useEffect(()=>{
@@ -40,7 +40,17 @@ export default function App() {
   const scroll=(id:string)=>document.getElementById(id)?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});
   function enterPlayer(){clearTimeout(hideTimer.current);setBlank(false);setAccess(false);setHint(false);window.requestAnimationFrame(()=>scroll('musica'));}
   function enterBlank(){setAccess(false);setHint(false);setBlank(true);window.scrollTo({top:0,behavior:'instant' as ScrollBehavior});window.requestAnimationFrame(()=>document.getElementById('pantalla')?.focus({preventScroll:true}));}
-  return <main className="app-shell" data-theme={theme}>
+  return <main className="app-shell" data-theme={theme} onKeyDownCapture={e=>{
+    if(!blank||e.key!=='Tab')return;
+    // Keep keyboard focus in the cover without disabling the underlying media frame.
+    e.preventDefault();clearTimeout(hideTimer.current);
+    if(!access){reveal(true);window.requestAnimationFrame(()=>document.querySelector<HTMLButtonElement>('.cover-actions button')?.focus());return;}
+    const buttons=Array.from(document.querySelectorAll<HTMLButtonElement>('.cover-actions button'));
+    if(!buttons.length)return;
+    const index=buttons.indexOf(document.activeElement as HTMLButtonElement);
+    const next=e.shiftKey?(index<=0?buttons.length-1:index-1):(index+1)%buttons.length;
+    buttons[next].focus();
+  }}>
     <section id="pantalla" className={`blank-screen ${blank?'is-active':''}`} aria-label={`Pantalla ${theme==='black'?'negra':'blanca'}. Toca para mostrar accesos.`} tabIndex={blank?0:-1}
       onClick={()=>{if(blank)reveal();}}
       onKeyDown={e=>{if(e.target===e.currentTarget&&(e.key==='Enter'||e.key===' ')){e.preventDefault();reveal(true);}if(e.key==='Escape'){setAccess(false);setHint(false);}}}>
@@ -50,7 +60,7 @@ export default function App() {
         <button className="icon-button" aria-label="Ocultar accesos" onClick={()=>setAccess(false)}><Icon name="close" size={18}/></button>
       </nav>}
     </section>
-    <div className="workspace" ref={workspace} aria-hidden={blank}>
+    <div className="workspace" aria-hidden={blank}>
       <PlayerPanel key={activeUrl} playlists={playlists} activeUrl={activeUrl} onSelectUrl={setActiveUrl} zoom={zoom} onZoomChange={setZoom} onGoToConfig={()=>scroll('listas')} onReturn={enterBlank} theme={theme} onThemeChange={setTheme}/>
       <details className="settings" id="listas"><summary>Administrar mis listas</summary>
         <PlaylistConfig playlists={playlists} activeUrl={activeUrl} onChange={setPlaylists} onSelectUrl={setActiveUrl}/>
