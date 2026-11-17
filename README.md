@@ -1,104 +1,77 @@
-# Phonoplayer
+# MIOTUBE · Phonoplayer 2.0.0
 
-PWA independiente para reproducir listas de YouTube en un panel fijo superior, con controles de
-reproducción, zoom del reproductor y listas configurables por el usuario.
+Reproductor personal de YouTube instalable en iPhone como PWA. Pantalla inicial blanca o negra y reproductor al final de la página.
 
-- **Marca:** Phonoplayer
-- **Color de acento:** `#D4A017`
-- **Stack:** React 18 + TypeScript + Vite + Tailwind 3.4, Node 20.x, despliegue en Vercel
+## Lo que incluye
 
----
+- Fondo blanco o negro, recordado al volver a abrir.
+- Acceso «Ir a música / YouTube» y «Volver a pantalla vacía».
+- Un solo reproductor que permanece montado al volver arriba o compactar controles. Tamaño visible mínimo de 200 px; no se oculta ni se lleva a altura cero.
+- Listas guardadas, edición, eliminación, orden y selección activa, conservando las claves de almacenamiento de la versión anterior.
+- Inicio y salto por número de elemento, anterior, siguiente, reproducción, pausa y tamaño de video.
+- Contenido desplegable: posición original, título, autor, duración y miniatura. Búsqueda por título o número exacto, favoritos y selección con un toque.
+- Carga automática de las páginas de la lista; nunca renumera resultados filtrados. Se limita cada lote a 50 páginas; si hay más aparece «Cargar siguientes elementos».
+- Reanudación voluntaria del último video y segundo registrado por lista. No se reproduce automáticamente al abrir la aplicación.
+- Abrir el video seleccionado en YouTube, enlace a la app en móviles y ventana flotante en navegadores que admitan Document Picture-in-Picture.
+- Mensajes de conexión, lista privada, videos no disponibles, reproducción automática bloqueada y opción de reintentar.
 
-## Arranque local
+## Uso
 
-```bash
-npm install
-npm run dev      # http://localhost:5173
+1. Abre la aplicación y pulsa «Ir a música / YouTube».
+2. En «Mis listas +», añade un enlace de YouTube con un nombre. Las listas guardadas en la versión anterior se conservan si usas la misma dirección web y el mismo navegador.
+3. Inicia por número, abre el contenido para elegir un título, o pulsa «Continuar donde me quedé» si hay una reproducción guardada.
+4. Pulsa «Volver a pantalla vacía» para regresar al fondo. El reproductor queda abajo, dentro de la página.
+5. En iPhone: Safari → Compartir → Añadir a pantalla de inicio.
+
+## Listado sin clave personal
+
+No requiere configurar Google Cloud, API keys, cuentas adicionales ni variables de entorno. La función `api/playlist.mjs` consulta la página pública de la lista en YouTube y sus siguientes páginas; solo recupera metadatos, no descarga ni retransmite audio o video.
+
+Este acceso a metadatos no es la YouTube Data API oficial. Depende del formato y de la disponibilidad de la página pública: YouTube puede cambiarlo, limitar las solicitudes o restringir una lista. No permite leer listas privadas ni iniciar sesión en la cuenta de YouTube. Ante un fallo se informa al usuario y se conserva el acceso a YouTube. Si no se pueden confirmar posiciones originales, el salto numérico utiliza el orden de elementos disponibles en el reproductor y lo indica en pantalla.
+
+La búsqueda se aplica a los elementos cargados. La pantalla informa si faltan páginas. Los videos repetidos se mantienen como ocurrencias distintas y los elementos no disponibles no provocan una renumeración del catálogo. Si se modifica la lista en YouTube, pulsa «Actualizar»; los favoritos se guardan por posición dentro de la lista.
+
+La calidad y la continuidad del audio fuera de la aplicación, al desplazarse fuera del video o con la pantalla bloqueada dependen del navegador, YouTube, el dispositivo y la cuenta. La aplicación no garantiza audio en segundo plano. El enlace de la app requiere tener YouTube instalado; el enlace web permanece disponible.
+
+## Proyecto y despliegue en Vercel
+
+Este ZIP incluye código fuente, iconos, función del servidor, pruebas, configuración y la compilación `dist/`. No se ha publicado sobre tu proyecto actual.
+
+Para actualizar el proyecto existente, coloca el contenido de esta carpeta en la raíz del repositorio MIOTUBE y conserva su conexión con Vercel. `package.json` declara Node 22.x y `vercel.json` define el comando y la salida. No hay secretos que introducir.
+
+**Publica el proyecto completo, no solo `dist/`:** el listado necesita la función de servidor de `api/` y su módulo `server/`. Abrir `index.html` por doble clic o subir únicamente archivos estáticos no ejecuta esa función.
+
+Después de publicar, cierra y vuelve a abrir la PWA para recoger el nuevo service worker (`phonoplayer-v2.0.0`). Los favoritos y la reproducción se guardan localmente; no hay sincronización entre dispositivos.
+
+## Desarrollo y verificación
+
+```sh
+npm ci
+npm run dev
 ```
 
-## Verificación antes de desplegar
+Vite incluye la misma ruta de metadatos del servidor en desarrollo. Para verificar:
 
-```bash
-npx tsc --noEmit -p tsconfig.app.json   # sin errores
-npm run build                           # compila
-npm run preview                         # sirve dist/ para probar la PWA
+```sh
+npm test
+npm run test:ui
+npm run build
 ```
 
-> El service worker y el manifest solo se comportan como en producción cuando se sirve `dist/`
-> (`npm run preview`) o desde el despliegue real, no desde `npm run dev`.
+`npm test` verifica URLs, posiciones, duplicados, extracción y paginación. `test:ui` verifica los flujos en DOM con un reproductor simulado; no reproduce contenido real de YouTube.
 
-## Despliegue en Vercel
+Prueba de navegador opcional (requiere navegador de Playwright y tener `npm run dev` activo):
 
-1. Sube el repositorio a GitHub.
-2. En Vercel: **New Project** → importar el repo.
-3. Framework preset **Vite**, build `npm run build`, output `dist`. No hace falta configurar nada más.
-4. Tras cada despliegue, **incrementa `CACHE_NAME` en `public/sw.js`** (`phonoplayer-v1` →
-   `phonoplayer-v2`, …) para que los clientes ya instalados recojan los assets nuevos.
+```sh
+npx playwright install chromium
+npm run test:browser
+```
 
-## Instalación en iOS (sin App Store)
+`npm run preview` solo sirve la compilación estática. Para probar el listado usa `npm run dev` o el proyecto completo en Vercel.
 
-Safari → compartir → **Añadir a pantalla de inicio**. Da ícono propio, pantalla completa sin barra
-del navegador y respeta el notch mediante `viewport-fit=cover` +
-`apple-mobile-web-app-status-bar-style: black-translucent`.
+Consulta `VERIFICACION.md` para saber qué se comprobó realmente.
 
----
+## Referencias
 
-## Calidad de reproducción mínima
-
-La app solicita la calidad más baja (`tiny`) al arrancar cada video, para ahorrar datos.
-
-Detalles de implementación en `src/components/PlayerPanel.tsx`:
-
-- El comando se envía vía `postMessage` (`setPlaybackQuality`) al recibir `onReady` del iframe.
-- Se **reenvía en cada `onStateChange` con `info === 1`** (reproduciendo), porque YouTube
-  renegocia la calidad en cada cambio de pista dentro de una playlist.
-- Se añadió un **handshake `listening`** al cargar el iframe. Sin él, el embed de YouTube nunca
-  emite eventos hacia la página padre y ni la detección de video no disponible ni el ajuste de
-  calidad funcionarían.
-
-> **Es una sugerencia, no una garantía.** Con streaming adaptativo (DASH), YouTube puede ignorar la
-> petición y subir la calidad según el ancho de banda detectado, sobre todo en `videoseries`. No
-> existe forma de forzarlo desde la IFrame API. No usar `vq=` en la URL: no es API soportada.
-
-## Picture-in-Picture — no modificar
-
-Ver §8 de la especificación. Resumen: el `<video>` vive dentro de un iframe de `youtube.com`, otro
-origen, así que `contentDocument` es siempre `null` y `requestPictureInPicture()` es inalcanzable.
-No es un bug; es una restricción del navegador sin solución del lado del cliente.
-
-- **Chromium de escritorio** (`documentPictureInPicture` disponible): botón `⧉`, mueve el nodo del
-  reproductor a una ventana flotante y lo devuelve al cerrarla.
-- **iOS y el resto:** botón `↗`, abre la lista en la app nativa de YouTube vía esquema `youtube://`,
-  con respaldo a la URL web tras 700 ms. Ahí sí funcionan el PiP del sistema y el audio en segundo
-  plano.
-
-## Detalles críticos que no deben "optimizarse"
-
-- **El iframe nunca se desmonta** al pasar de `expanded` a `bar`: solo se le da altura 0.
-  Desmontarlo cortaría el audio. Esta es la razón de que siga sonando al hacer scroll.
-- **`enablejsapi=1` es obligatorio** en la URL de embed; sin él no hay controles.
-- **El botón "Reanudar" remonta el iframe** cambiando su `key`. iOS suspende el iframe al salir de
-  la app y no hay forma de reanudar sin remontar (el video reinicia desde el principio: es el
-  comportamiento esperado, no un fallo).
-- **El service worker no cachea** `youtube.com`, `youtu.be`, `googlevideo.com`, `ytimg.com` ni
-  `ggpht.com`.
-
----
-
-## Cambiar los parámetros de marca
-
-`src/brand.ts` es la fuente de verdad del nombre y el color en la UI. Al cambiar el nombre,
-actualizar además:
-
-- `index.html` → `<title>` y `<meta name="apple-mobile-web-app-title">`
-- `public/manifest.webmanifest` → `name` y `short_name`
-- `public/sw.js` → `CACHE_NAME`
-
-Para regenerar los iconos desde otro logo: editar `SRC` en `scripts/make-icons.py` y ejecutar
-`python3 scripts/make-icons.py` (requiere Pillow). Genera fondo blanco sólido con el emblema al 80%,
-remuestreo LANCZOS.
-
-## Fuera de alcance
-
-Sin seguimiento de entrenamientos, temporizadores, base de datos, historial, IndexedDB,
-backup/restore ni funcionalidad de fitness. La app hace una sola cosa.
+- API oficial del reproductor: https://developers.google.com/youtube/iframe_api_reference
+- El catálogo sin clave usa el acceso público descrito arriba, independiente de la API del reproductor.

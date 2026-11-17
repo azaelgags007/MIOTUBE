@@ -1,6 +1,6 @@
 // Service worker de Phonoplayer.
 // Incrementar CACHE_NAME en cada despliegue para forzar actualizacion de assets.
-const CACHE_NAME = 'phonoplayer-v1';
+const CACHE_NAME = 'phonoplayer-v2.0.0';
 
 const SHELL = [
   '/',
@@ -25,7 +25,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('phonoplayer-') && k !== CACHE_NAME).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -45,7 +45,7 @@ self.addEventListener('fetch', (event) => {
   if (NEVER_CACHE.some((host) => url.hostname === host || url.hostname.endsWith('.' + host))) return;
 
   // Solo cacheamos nuestro propio origen.
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
 
   // Navegaciones: red primero, cache como respaldo offline.
   if (req.mode === 'navigate') {

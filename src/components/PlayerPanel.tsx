@@ -1,462 +1,171 @@
-import { useEffect, useRef, useState } from 'react';
-import type { PanelState, Playlist } from '../types';
-import { parseYouTubeUrl } from '../utils/youtube';
-import { ZOOM_MAX, ZOOM_MIN } from '../utils/storage';
-import { BRAND_COLOR, BRAND_NAME } from '../brand';
-
+import {useEffect,useRef,useState} from 'react';
+import type {Bookmark,Playlist,Track} from '../types';
+import {parseYouTubeUrl,watchUrl} from '../utils/youtube';
+import {loadBookmark,writeJson,ZOOM_MAX,ZOOM_MIN} from '../utils/storage';
+import {loadYouTube,type YTPlayer} from '../utils/player';
+import {queueIndexForTrack,trackForQueueIndex} from '../utils/positions';
+import PlaylistLibrary from './PlaylistLibrary';
 interface Props {
-  playlists: Playlist[];
-  activeUrl: string;
-  onSelectUrl: (url: string) => void;
-  zoom: number;
-  onZoomChange: (zoom: number) => void;
-  onGoToConfig: () => void;
+  playlists:Playlist[];activeUrl:string;onSelectUrl:(url:string)=>void;
+  zoom:number;onZoomChange:(zoom:number)=>void;onGoToConfig:()=>void;onReturn:()=>void;
 }
-
-export default function PlayerPanel({
-  playlists,
-  activeUrl,
-  onSelectUrl,
-  zoom,
-  onZoomChange,
-  onGoToConfig
-}: Props) {
-  const [state, setState] = useState<PanelState>('hidden');
-  const [draft, setDraft] = useState(activeUrl);
-  const [needsResume, setNeedsResume] = useState(false);
-  const [iframeKey, setIframeKey] = useState(0);
-  const [showEditor, setShowEditor] = useState(false);
-  const [safeTop, setSafeTop] = useState(44);
-  const [videoUnavailable, setVideoUnavailable] = useState(false);
-
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const playerHostRef = useRef<HTMLDivElement>(null);
-  const playerSlotRef = useRef<HTMLDivElement>(null);
-
-  const parsed = parseYouTubeUrl(activeUrl);
-  const embedUrl = parsed.embedUrl;
-
-  useEffect(() => {
-    setDraft(activeUrl);
-  }, [activeUrl]);
-
-  useEffect(() => {
-    const el = document.createElement('div');
-    el.style.cssText =
-      'position:fixed;top:env(safe-area-inset-top,0px);height:0;pointer-events:none;visibility:hidden';
-    document.body.appendChild(el);
-    const top = el.getBoundingClientRect().top;
-    setSafeTop(top > 0 ? top : 44);
-    document.body.removeChild(el);
-  }, []);
-
-  useEffect(() => {
-    if (state === 'hidden') return;
-    const onVis = () => {
-      if (document.visibilityState === 'hidden') setNeedsResume(true);
-    };
-    document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
-  }, [state]);
-
-  // Mismo manejo de mensajes de YouTube que APP1.
-  useEffect(() => {
-    function onMessage(e: MessageEvent) {
-      try {
-        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-        if (data?.event === 'onError') {
-          if ([100, 101, 150].includes(data.info)) setVideoUnavailable(true);
-        }
-        if (data?.event === 'onStateChange' && data?.info === 1) {
-          setVideoUnavailable(false);
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
-  }, []);
-
-  function ytCommand(cmd: string, args?: unknown) {
-    iframeRef.current?.contentWindow?.postMessage(
-      JSON.stringify({ event: 'command', func: cmd, args: args ?? [] }),
-      '*'
-    );
-  }
-
-  const docPiPSupported =
-    typeof window !== 'undefined' && 'documentPictureInPicture' in window;
-
-  async function enterDocumentPiP() {
-    const host = playerHostRef.current;
-    if (!host) return;
+interface Target {position:number;videoId:string|null;seconds:number;}
+export default function PlayerPanel({playlists,activeUrl,onSelectUrl,zoom,onZoomChange,onGoToConfig,onReturn}:Props) {
+  const source=parseYouTubeUrl(activeUrl);
+  const [started,setStarted]=useState(false),[ready,setReady]=useState(false),[compact,setCompact]=useState(false);
+  const [error,setError]=useState(''),[message,setMessage]=useState(''),[title,setTitle]=useState('');
+  const [number,setNumber]=useState('1'),[position,setPosition]=useState(1),[videoId,setVideoId]=useState<string|null>(source.videoId);
+  const [bookmark]=useState(()=>loadBookmark(source.key));
+  const [needsResume,setNeedsResume]=useState(false),[retry,setRetry]=useState(0);
+  const [catalogStatus,setCatalogStatus]=useState<'loading'|'ready'|'error'>('loading');
+  const [catalog,setCatalog]=useState<Track[]>([]),[pipSupported,setPipSupported]=useState(false);
+  const player=useRef<YTPlayer|null>(null), mount=useRef<HTMLDivElement>(null);
+  const host=useRef<HTMLDivElement>(null),slot=useRef<HTMLDivElement>(null);
+  const pending=useRef<Target|null>(null),tracks=useRef<Track[]>([]),last=useRef<Bookmark|null>(bookmark);
+  const pip=useRef<Window|null>(null),playing=useRef(false),readyRef=useRef(false);
+  tracks.current=catalog;
+  useEffect(()=>{setPipSupported('documentPictureInPicture' in window);},[]);
+  function capture() {
+    const p=player.current;if(!p || !readyRef.current) return;
     try {
-      const pipWindow = await (window as any).documentPictureInPicture.requestWindow({
-        width: 400,
-        height: 260
-      });
-      pipWindow.document.body.style.cssText = 'margin:0;background:#020617;overflow:hidden';
-      pipWindow.document.body.append(host);
-      pipWindow.addEventListener('pagehide', () => {
-        playerSlotRef.current?.append(host);
-      });
-    } catch {
-      /* el usuario canceló o el navegador lo bloqueó */
-    }
+      const data=p.getVideoData(),queue=p.getPlaylist()||[],idx=p.getPlaylistIndex();
+      if(!data.video_id || p.getPlayerState()===-1 || p.getPlayerState()===5 || pending.current) return;
+      const track=trackForQueueIndex(queue,idx,tracks.current);
+      const pos=track?.position ?? Math.max(1,idx+1);
+      const b:Bookmark={position:pos,videoId:data.video_id,seconds:Math.max(0,p.getCurrentTime()||0),updatedAt:Date.now()};
+      last.current=b;writeJson(`miotube_bookmark:${source.key}`,b);
+      setPosition(pos);setVideoId(data.video_id);setTitle(data.title||'');
+    } catch { /* Player may be initializing or being destroyed. */ }
   }
-
-  function openInYouTubeApp() {
-    const url = activeUrl;
-    if (!url) return;
-    const appUrl = url.replace(
-      /^https?:\/\/(www\.)?(m\.)?youtube\.com/,
-      'youtube://www.youtube.com'
-    );
-    window.location.href = appUrl !== url ? appUrl : url;
-    setTimeout(() => {
-      window.open(url, '_blank', 'noreferrer');
-    }, 700);
+  function applyPending() {
+    const target=pending.current,p=player.current;if(!target||!p||!readyRef.current) return;
+    try {
+      if(source.listId) {
+        const queue=p.getPlaylist()||[]; if(!queue.length) return;
+        const track=tracks.current.find(t=>t.position===target.position && (!target.videoId||t.videoId===target.videoId));
+        const index=track?queueIndexForTrack(queue,track,tracks.current):target.videoId?(queue[target.position-1]===target.videoId?target.position-1:queue.indexOf(target.videoId)):target.position-1;
+        if(index<0 || index>=queue.length) { pending.current=null;setError('Ese elemento no está disponible en el reproductor. Consulta el contenido o ábrelo en YouTube.');return; }
+        pending.current=null;p.playVideoAt(index);
+        // loadPlaylist already received startSeconds for a new player; for an existing one,
+        // wait for the requested video before seeking to its bookmark.
+        if(target.seconds>0) seekPending.current={videoId:queue[index],seconds:target.seconds};
+      } else {
+        pending.current=null;
+        p.loadVideoById({videoId:source.videoId!,startSeconds:target.seconds});
+      }
+      setPosition(target.position);setNumber(String(target.position));setError('');
+    } catch {setError('No se pudo seleccionar el elemento. Reintenta cuando cargue YouTube.');}
   }
-
-  const open = () => {
-    setState('expanded');
-    setNeedsResume(false);
-    setVideoUnavailable(false);
-  };
-
-  const toggle = () => {
-    setState((s) => (s === 'expanded' ? 'bar' : 'expanded'));
-    setNeedsResume(false);
-  };
-
-  const close = () => {
-    setState('hidden');
-    setNeedsResume(false);
-  };
-
-  const resume = () => {
-    setIframeKey((k) => k + 1);
-    setNeedsResume(false);
-    setVideoUnavailable(false);
-    setState('expanded');
-  };
-
-  const save = () => {
-    const next = draft.trim();
-    if (!next) return;
-    onSelectUrl(next);
-    setIframeKey((k) => k + 1);
-    setShowEditor(false);
-    setVideoUnavailable(false);
-  };
-
-  const applyPreset = (url: string) => {
-    setDraft(url);
-    onSelectUrl(url);
-    setIframeKey((k) => k + 1);
-    setVideoUnavailable(false);
-  };
-
-  const skipVideo = () => {
-    ytCommand('nextVideo');
-    setVideoUnavailable(false);
-  };
-
-  const clampedZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom));
-  const BAR_H = 48;
-  const iframeH =
-    state === 'expanded' ? Math.round(window.innerHeight * clampedZoom / 100) : 0;
-  const extraH = state === 'expanded' ? 88 : 0;
-  const spacerH = safeTop + BAR_H + iframeH + extraH;
-
-  if (state === 'hidden') {
-    return (
-      <div className="px-4 pt-6">
-        <button
-          type="button"
-          className="card flex w-full items-center justify-between gap-4 p-5 text-left transition active:scale-[0.99]"
-          onClick={open}
-        >
-          <span>
-            <span className="block text-base font-black tracking-tight">{BRAND_NAME}</span>
-            <span className="mt-1 block text-sm text-slate-500 dark:text-slate-400">
-              Reproduce tus listas de YouTube en un panel fijo.
-            </span>
-          </span>
-          <span className="pill shrink-0 text-slate-950" style={{ backgroundColor: BRAND_COLOR }}>
-            Abrir
-          </span>
-        </button>
-      </div>
-    );
+  const seekPending=useRef<{videoId:string;seconds:number}|null>(null);
+  useEffect(()=>{
+    if(!started||!source.embedUrl) return;
+    let cancelled=false,owned:YTPlayer|null=null;
+    void loadYouTube().then(YT=>{
+      if(cancelled||!mount.current) return;
+      const child=document.createElement('div');mount.current.replaceChildren(child);
+      const initial=pending.current ?? {position:1,videoId:source.videoId,seconds:0};
+      owned=new YT.Player(child,{
+        width:'100%',height:'100%',
+        playerVars:{playsinline:1,controls:1,origin:location.origin,rel:0},
+        events:{
+          onReady:()=>{
+            if(cancelled||!owned) return;
+            readyRef.current=true;setReady(true);
+            const frame=owned.getIframe();frame.title='Reproductor de YouTube';frame.allowFullscreen=true;frame.style.cssText='width:100%;height:100%;min-height:200px;display:block;border:0';
+            if(source.listId) owned.loadPlaylist({list:source.listId,listType:'playlist',index:initial.position-1,startSeconds:initial.seconds});
+            else {pending.current=null;owned.loadVideoById({videoId:source.videoId!,startSeconds:initial.seconds});}
+          },
+          onStateChange:(event:{data:number})=>{
+            if(cancelled) return;
+            playing.current=event.data===1;
+            if(event.data===1){setNeedsResume(false);setError('');}
+            if(event.data===1||event.data===2) capture();
+          },
+          onError:(event:{data:number})=>{
+            if(cancelled) return;
+            const messages:Record<number,string>={2:'No se pudo abrir este elemento.',5:'El navegador no pudo reproducir este video.',100:'El video fue eliminado o es privado.',101:'El propietario no permite reproducir este video aquí.',150:'El propietario no permite reproducir este video aquí.',153:'YouTube no pudo verificar el origen del reproductor. Abre la aplicación desde su dirección web.'};
+            setError(messages[event.data]||'YouTube no pudo reproducir este elemento.');
+          },
+          onAutoplayBlocked:()=>{if(!cancelled)setMessage('Pulsa Reproducir o el botón del video para iniciar.');}
+        }
+      });player.current=owned;
+    }).catch(e=>{if(!cancelled)setError(e.message);});
+    const timer=window.setInterval(()=>{
+      applyPending();
+      const seek=seekPending.current,p=player.current;
+      if(seek&&p&&readyRef.current) {
+        try {if(p.getVideoData().video_id===seek.videoId&&p.getPlayerState()===1){p.seekTo(seek.seconds,true);seekPending.current=null;}}catch{/* wait */}
+      }
+      capture();
+    },1000);
+    const visibility=()=>{if(document.hidden){capture();if(playing.current)setNeedsResume(true);}};
+    const pagehide=()=>capture();
+    document.addEventListener('visibilitychange',visibility);window.addEventListener('pagehide',pagehide);
+    return ()=>{
+      capture();cancelled=true;clearInterval(timer);
+      document.removeEventListener('visibilitychange',visibility);window.removeEventListener('pagehide',pagehide);
+      pip.current?.close();owned?.destroy();player.current=null;readyRef.current=false;
+    };
+    // Source changes remount PlayerPanel; navigating the blank screen never recreates the player.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[started,retry]);
+  function select(target:Target) {
+    pending.current=target;setError('');setMessage('');
+    if(!started) setStarted(true);else applyPending();
   }
-
-  return (
-    <>
-      <div style={{ height: spacerH }} aria-hidden="true" />
-      <div
-        className="fixed inset-x-0 top-0 z-50 bg-slate-950 shadow-xl"
-        style={{ paddingTop: safeTop }}
-      >
-        <div className="flex items-center gap-1.5 px-2" style={{ height: BAR_H }}>
-          <span className="text-base">🎵</span>
-          <p className="min-w-0 flex-1 truncate text-xs font-black text-white">
-            {needsResume
-              ? '⚠ Video pausado — Reanudar'
-              : videoUnavailable
-                ? '⚠ Video no disponible'
-                : state === 'expanded'
-                  ? 'Playlist activa'
-                  : 'Música activa'}
-          </p>
-
-          {needsResume && (
-            <button
-              type="button"
-              onClick={resume}
-              className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-black text-slate-950 active:opacity-70"
-              style={{ backgroundColor: BRAND_COLOR }}
-            >
-              ▶ Reanudar
-            </button>
-          )}
-
-          {videoUnavailable && !needsResume && (
-            <button
-              type="button"
-              onClick={skipVideo}
-              className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-black text-slate-950 active:opacity-70"
-              style={{ backgroundColor: BRAND_COLOR }}
-            >
-              ⏭ Saltar
-            </button>
-          )}
-
-          {!needsResume && !videoUnavailable && parsed.listId && (
-            <div className="flex gap-1">
-              <ControlButton label="Video anterior" onClick={() => ytCommand('previousVideo')}>
-                ⏮
-              </ControlButton>
-              <ControlButton label="Reproducir" onClick={() => ytCommand('playVideo')}>
-                ▶
-              </ControlButton>
-              <ControlButton label="Pausar" onClick={() => ytCommand('pauseVideo')}>
-                ⏸
-              </ControlButton>
-              <ControlButton label="Video siguiente" onClick={() => ytCommand('nextVideo')}>
-                ⏭
-              </ControlButton>
-            </div>
-          )}
-
-          {state === 'expanded' && !needsResume && activeUrl &&
-            (docPiPSupported ? (
-              <button
-                type="button"
-                onClick={enterDocumentPiP}
-                title="Ventana flotante"
-                className="shrink-0 rounded-xl bg-white/10 px-2.5 py-1.5 text-xs font-black text-white active:opacity-70"
-              >
-                ⧉
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={openInYouTubeApp}
-                title="Abrir en la app de YouTube"
-                className="shrink-0 rounded-xl bg-white/10 px-2.5 py-1.5 text-xs font-black text-white active:opacity-70"
-              >
-                ↗
-              </button>
-            ))}
-
-          <button
-            type="button"
-            onClick={toggle}
-            className="shrink-0 rounded-xl bg-white/10 px-2.5 py-1.5 text-xs font-black text-white active:opacity-70"
-            aria-label={state === 'expanded' ? 'Contraer reproductor' : 'Expandir reproductor'}
-          >
-            {state === 'expanded' ? '▲' : '▼'}
-          </button>
-          <button
-            type="button"
-            onClick={close}
-            className="shrink-0 rounded-xl bg-white/10 px-2.5 py-1.5 text-xs font-black text-white/50 active:opacity-70"
-            aria-label="Cerrar reproductor"
-          >
-            ✕
-          </button>
+  function jump() {
+    const n=Number(number);
+    if(!Number.isSafeInteger(n)||n<1||n>100000){setError('Escribe un número entero mayor que cero (máximo 100000).');return;}
+    const track=catalog.find(t=>t.position===n);
+    if(source.listId&&catalogStatus==='loading'&&!track){setMessage('Se están consultando las posiciones originales. Espera un momento y pulsa de nuevo.');return;}
+    if(source.listId&&catalogStatus==='ready'&&!track){setError('Esa posición no aparece entre los elementos visibles de la lista. Consulta su contenido.');return;}
+    if(track&&!track.available){setError('Ese elemento no está disponible. Puedes abrirlo en YouTube.');return;}
+    select({position:n,videoId:track?.videoId??null,seconds:0});
+  }
+  function resume() {
+    if(readyRef.current){player.current?.playVideo();setNeedsResume(false);setMessage('Si sigue pausado, pulsa el botón del video o Recargar reproductor.');}
+    else restart();
+  }
+  function restart() {
+    capture();pending.current=last.current??{position:1,videoId:source.videoId,seconds:0};
+    setReady(false);setError('');if(started)setRetry(v=>v+1);else setStarted(true);
+  }
+  async function openPip() {
+    try {
+      const api=(window as unknown as Window & {documentPictureInPicture:{requestWindow:(size:{width:number;height:number})=>Promise<Window>}}).documentPictureInPicture;
+      const w=await api.requestWindow({width:480,height:300});pip.current=w;
+      if(!host.current)return;w.document.documentElement.style.height='100%';w.document.body.style.cssText='margin:0;background:#000;height:100vh';w.document.body.append(host.current);
+      w.addEventListener('pagehide',()=>{if(host.current&&slot.current)slot.current.append(host.current);pip.current=null;},{once:true});
+    } catch {setMessage('No se pudo abrir la ventana flotante. Puedes abrir el video en YouTube.');}
+  }
+  const mobileApp=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  const external=watchUrl(source.listId,videoId,position,last.current?.seconds||0);
+  return <section id="musica" className="player-card" aria-label="Música / YouTube">
+    <header className="player-heading"><div><span className="eyebrow">MIOTUBE · Phonoplayer</span><h1>Música / YouTube</h1></div><button onClick={onReturn}>Volver a pantalla vacía ↑</button></header>
+    <div className="row playlist-tabs">{playlists.map(pl=><button key={pl.id} className={pl.url===activeUrl?'accent':''} aria-pressed={pl.url===activeUrl} onClick={()=>onSelectUrl(pl.url)}>{pl.label}</button>)}<button onClick={()=>{const details=document.getElementById('listas') as HTMLDetailsElement|null;if(details)details.open=true;onGoToConfig();}}>Mis listas +</button></div>
+    {!source.embedUrl?<p className="notice">{activeUrl?'El enlace no es compatible. Agrega una lista o un video de YouTube.':'Agrega tu primera lista en «Mis listas +».'}</p>:<>
+      <div className="row number-form"><label htmlFor="numero">Elemento de la lista</label><input id="numero" type="number" inputMode="numeric" min="1" max="100000" step="1" value={number} onChange={e=>setNumber(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')jump();}}/><button className="accent" onClick={jump}>{started?'Ir al elemento':'Iniciar desde este elemento'}</button></div>
+      {source.listId&&catalogStatus==='error'&&<p className="muted">No se pudieron confirmar todas las posiciones originales. El salto por número usará el orden disponible en el reproductor de YouTube.</p>}
+      {!started&&bookmark&&<div className="notice">Última reproducción: elemento {bookmark.position}, minuto {Math.floor(bookmark.seconds/60)}:{String(Math.floor(bookmark.seconds%60)).padStart(2,'0')}. <button onClick={()=>select(bookmark)}>Continuar donde me quedé</button></div>}
+      {started&&<>
+        <div className="row controls">
+          <button disabled={!ready} aria-label="Video anterior" onClick={()=>player.current?.previousVideo()}>⏮ Anterior</button>
+          <button disabled={!ready} onClick={()=>player.current?.playVideo()}>▶ Reproducir</button>
+          <button disabled={!ready} onClick={()=>{player.current?.pauseVideo();capture();}}>⏸ Pausar</button>
+          <button disabled={!ready} aria-label="Video siguiente" onClick={()=>player.current?.nextVideo()}>Siguiente ⏭</button>
+          <button aria-expanded={!compact} onClick={()=>setCompact(v=>!v)}>{compact?'Ampliar controles':'Controles compactos'}</button>
         </div>
-
-        {state === 'expanded' && (
-          <div className="border-t border-white/10">
-            <div className="no-scrollbar flex gap-1.5 overflow-x-auto px-2 py-1.5">
-              {playlists.map((pl) => (
-                <button
-                  key={pl.id}
-                  type="button"
-                  onClick={() => applyPreset(pl.url)}
-                  className={`shrink-0 rounded-xl px-2.5 py-1 text-xs font-black active:opacity-70 ${
-                    activeUrl === pl.url ? 'text-slate-950' : 'bg-white/10 text-white/70'
-                  }`}
-                  style={activeUrl === pl.url ? { backgroundColor: BRAND_COLOR } : undefined}
-                >
-                  {pl.label}
-                </button>
-              ))}
-
-              <button
-                type="button"
-                onClick={() => setShowEditor((v) => !v)}
-                className="shrink-0 rounded-xl bg-white/10 px-2.5 py-1 text-xs font-black text-white/70 active:opacity-70"
-              >
-                {showEditor ? 'Ocultar' : 'Cambiar URL'}
-              </button>
-
-              {activeUrl && (
-                <a
-                  href={activeUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="shrink-0 rounded-xl bg-white/10 px-2.5 py-1 text-xs font-black text-white/70"
-                >
-                  YT ↗
-                </a>
-              )}
-            </div>
-
-            {!docPiPSupported && activeUrl && (
-              <p className="px-2 pb-1 text-[10px] font-semibold leading-tight text-white/35">
-                iOS no permite PiP en videos incrustados de YouTube. Usa ↗ para abrir la playlist
-                en la app de YouTube, donde sí funciona el PiP nativo.
-              </p>
-            )}
-
-            <div className="flex items-center gap-2 px-2 pb-1">
-              <span className="shrink-0 text-xs font-black text-white/40">Zoom</span>
-              <input
-                type="range"
-                min={ZOOM_MIN}
-                max={ZOOM_MAX}
-                step="1"
-                value={clampedZoom}
-                onChange={(e) => onZoomChange(Number(e.target.value))}
-                className="h-1 flex-1"
-                style={{ accentColor: BRAND_COLOR }}
-              />
-              <span className="w-7 shrink-0 text-right text-xs font-black text-white/60">
-                {clampedZoom}%
-              </span>
-            </div>
-
-            {showEditor && (
-              <div className="flex gap-1.5 px-2 pb-1.5">
-                <input
-                  className="flex-1 rounded-xl border border-white/10 bg-white/10 px-2 py-1.5 text-xs text-white outline-none placeholder:text-white/30"
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') save();
-                  }}
-                  placeholder="URL de playlist o video YouTube"
-                  inputMode="url"
-                />
-                <button
-                  type="button"
-                  onClick={save}
-                  className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-black text-slate-950"
-                  style={{ backgroundColor: BRAND_COLOR }}
-                >
-                  OK
-                </button>
-              </div>
-            )}
-
-            {videoUnavailable && (
-              <div className="mx-2 mb-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-                <p className="text-xs font-black text-amber-400">
-                  ⚠ Este video no permite reproducción externa
-                </p>
-                <div className="mt-1.5 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={skipVideo}
-                    className="flex-1 rounded-xl py-1.5 text-xs font-black text-slate-950 active:opacity-70"
-                    style={{ backgroundColor: BRAND_COLOR }}
-                  >
-                    ⏭ Saltar al siguiente
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowEditor(true);
-                      setDraft(activeUrl);
-                    }}
-                    className="flex-1 rounded-xl bg-white/10 py-1.5 text-xs font-black text-white/70 active:opacity-70"
-                  >
-                    Cambiar playlist
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {embedUrl ? (
-              <div ref={playerSlotRef} style={{ height: iframeH }} className="overflow-hidden">
-                <div ref={playerHostRef} className="h-full w-full">
-                  <iframe
-                    key={iframeKey}
-                    ref={iframeRef}
-                    className="h-full w-full"
-                    src={embedUrl}
-                    title="Playlist"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="px-2 pb-2">
-                <p className="rounded-xl bg-amber-900/40 px-3 py-2 text-xs font-bold text-amber-300">
-                  {activeUrl
-                    ? 'URL no compatible. Prueba con una playlist de YouTube.'
-                    : 'Sin URL configurada. Agrega una lista desde la configuración.'}
-                </p>
-                {!activeUrl && (
-                  <button
-                    type="button"
-                    onClick={onGoToConfig}
-                    className="mt-2 rounded-xl bg-white/10 px-3 py-1.5 text-xs font-black text-white/70"
-                  >
-                    Ir a listas
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
-function ControlButton({
-  children,
-  onClick,
-  label
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      className="rounded-xl bg-white/10 px-2 py-1.5 text-xs font-black text-white active:opacity-70"
-    >
-      {children}
-    </button>
-  );
+        {title&&<p className="now-playing">{catalog.some(t=>t.position===position&&t.videoId===videoId)?'Posición original':'Elemento del reproductor'} {position} · {title}</p>}
+        {needsResume&&<p role="status" className="notice">La reproducción puede haberse pausado al salir. <button onClick={resume}>Reanudar</button></p>}
+        {!compact&&<div className="row zoom"><label htmlFor="zoom">Tamaño del video</label><input id="zoom" type="range" min={ZOOM_MIN} max={ZOOM_MAX} value={zoom} onChange={e=>onZoomChange(Number(e.target.value))}/><span>{zoom}%</span>{pipSupported&&<button disabled={!ready} onClick={()=>void openPip()}>Ventana flotante</button>}</div>}
+      </>}
+      {error&&<p role="alert" className="notice">{error} <button onClick={restart}>Recargar reproductor</button></p>}
+      {message&&<p role="status" className="muted">{message}</p>}
+      <div className="row"><a className="button-link" href={external} target="_blank" rel="noreferrer">Abrir en YouTube ↗</a>{mobileApp&&<a className="button-link" href={external.replace('https://www.youtube.com/','youtube://www.youtube.com/')}>Abrir en la app de YouTube</a>}{started&&<button onClick={restart}>Recargar reproductor</button>}</div>
+      {started&&<div className="video-slot" ref={slot} style={{height:compact?220:`max(220px, ${zoom}svh)`}}><div ref={host} className="video-host" style={{width:'100%',height:'100%'}}><div ref={mount} className="video-mount" style={{width:'100%',height:'100%'}}/></div></div>}
+      {started&&!ready&&!error&&<p role="status">Conectando con YouTube…</p>}
+      <p className="muted small">Al volver a la pantalla vacía, el reproductor permanece al final. La reproducción con la pantalla bloqueada o fuera de la app depende de YouTube y del navegador.</p>
+      {source.listId&&<PlaylistLibrary listId={source.listId} currentPosition={position} onTracks={setCatalog} onStatus={setCatalogStatus} onSelect={track=>select({position:track.position,videoId:track.videoId,seconds:0})}/>}
+    </>}
+  </section>;
 }

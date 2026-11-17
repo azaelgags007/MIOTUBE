@@ -45,3 +45,53 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* MIOTUBE 2 — one blank viewport, followed by the complete player. */
+:root {font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; color-scheme: light;}
+.dark {color-scheme:dark;}
+body {margin:0;background:inherit;}
+.app-shell {--surface:#f5f5f5;--line:#ddd;--muted:#616161; background:#fff;color:#171717;min-height:100svh;}
+.app-shell[data-theme="black"] {--surface:#151515;--line:#333;--muted:#aaa;background:#000;color:#f3f3f3;}
+.blank-screen {height:100svh;min-height:520px;position:relative;}
+.cover-actions {position:absolute;bottom:max(22px,env(safe-area-inset-bottom));left:16px;right:16px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap;}
+button,.button-link {border:1px solid var(--line);border-radius:14px;padding:10px 14px;font-size:14px;font-weight:600;line-height:1.4;min-height:44px;background:var(--surface);color:inherit;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;}
+button:disabled {opacity:.45;cursor:not-allowed;}
+button:hover:not(:disabled),.button-link:hover {filter:brightness(.92);}
+button[aria-pressed="true"] {border-color:#b08111;}
+.accent {background:#d4a017!important;color:#17130a!important;border-color:#d4a017!important;}
+.workspace {width:min(100%,960px);margin:auto;padding:24px 16px max(36px,env(safe-area-inset-bottom));}
+.player-card {background:var(--surface);border:1px solid var(--line);padding:20px;border-radius:24px;scroll-margin-top:12px;}
+.player-heading {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:20px;}
+h1 {font-size:24px;font-weight:750;margin:5px 0;letter-spacing:-.6px;}
+.eyebrow {font-size:11px;letter-spacing:2px;color:var(--muted);}
+.row {display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0;}
+input:not([type="checkbox"]):not([type="range"]) {min-width:0;background:transparent;color:inherit;border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-height:44px;}
+.number-form input {width:90px;}
+.zoom input {flex:1;min-width:100px;accent-color:#d4a017;}
+.muted {color:var(--muted);font-size:13px;line-height:1.6;}
+.small {font-size:11px;}
+.notice {border:1px solid #a87e1f;border-radius:14px;padding:12px;font-size:13px;line-height:1.7;margin:12px 0;}
+.notice button {margin:4px;font-size:12px;}
+.now-playing {font-size:14px;font-weight:600;margin:12px 0;}
+.video-slot {margin:16px 0;width:100%;min-width:200px;background:#000;}
+.video-host,.video-mount,.video-mount iframe {width:100%;height:100%;min-height:200px;display:block;border:0;}
+.library {border-top:1px solid var(--line);margin-top:20px;padding-top:16px;}
+.wide {width:100%;}
+.library-body {margin-top:12px;}
+.library-body .row input {flex:1;}
+.check {display:flex;align-items:center;gap:8px;font-size:13px;min-height:44px;}
+.check input {accent-color:#d4a017;width:18px;height:18px;}
+.track-list {list-style:none;margin:12px 0;padding:0;max-height:65svh;overflow:auto;}
+.track-list li {display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding:10px 2px;}
+.track-list li.current {box-shadow:inset 3px 0 #d4a017;}
+.track-number {width:32px;text-align:center;font-variant-numeric:tabular-nums;flex-shrink:0;font-size:13px;}
+.track-list img {width:80px;height:45px;object-fit:cover;border-radius:6px;}
+.track-title {flex:1;min-width:0;display:block;text-align:left;background:transparent;border:0;padding:4px;}
+.track-title strong {display:block;font-size:13px;overflow-wrap:anywhere;}
+.track-title span {display:block;}
+.star {font-size:22px;color:#b88712;padding:6px;min-width:44px;background:transparent;border:0;}
+.external {font-size:22px;padding:8px;color:inherit;min-width:36px;text-decoration:none;}
+.settings {margin-top:20px;border:1px solid var(--line);border-radius:20px;padding:16px;scroll-margin:12px;}
+.settings summary {cursor:pointer;min-height:32px;font-size:14px;font-weight:600;}
+.settings .card {box-shadow:none;}
+@media(max-width:500px) {.workspace{padding:12px 10px 30px}.player-card{padding:14px}.player-heading button{font-size:12px}.track-list img{display:none}.track-list li{gap:4px}.controls button{flex:1;font-size:12px}.cover-actions button{font-size:12px;padding:10px;}.library-body .row input{width:100%}}

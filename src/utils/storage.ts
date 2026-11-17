@@ -68,3 +68,14 @@ export function newId(): string {
   }
   return `pl-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
+
+export function loadTheme(): 'white' | 'black' { return safeGet('miotube_theme') === 'white' ? 'white' : 'black'; }
+export function saveTheme(theme: 'white' | 'black') { safeSet('miotube_theme', theme); }
+export function readJson<T>(key: string, fallback: T): T {
+  try { const raw = safeGet(key); return raw ? JSON.parse(raw) as T : fallback; } catch { return fallback; }
+}
+export function writeJson(key: string, value: unknown) { safeSet(key, JSON.stringify(value)); }
+export function loadBookmark(key: string): import('../types').Bookmark | null {
+  const b = readJson<import('../types').Bookmark | null>(`miotube_bookmark:${key}`, null);
+  return b && Number.isSafeInteger(b.position) && b.position > 0 && Number.isFinite(b.seconds) && b.seconds >= 0 ? b : null;
+}
