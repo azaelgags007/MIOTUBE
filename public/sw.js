@@ -1,6 +1,6 @@
 // Service worker de Phonoplayer.
 // Incrementar CACHE_NAME en cada despliegue para forzar actualizacion de assets.
-const CACHE_NAME = 'phonoplayer-v2.0.0';
+const CACHE_NAME = 'phonoplayer-v2.1.0';
 
 const SHELL = [
   '/',

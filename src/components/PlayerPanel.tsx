@@ -5,14 +5,18 @@ import {loadBookmark,writeJson,ZOOM_MAX,ZOOM_MIN} from '../utils/storage';
 import {loadYouTube,type YTPlayer} from '../utils/player';
 import {queueIndexForTrack,trackForQueueIndex} from '../utils/positions';
 import PlaylistLibrary from './PlaylistLibrary';
+import Icon from './Icon';
+import Popover from './Popover';
 interface Props {
   playlists:Playlist[];activeUrl:string;onSelectUrl:(url:string)=>void;
   zoom:number;onZoomChange:(zoom:number)=>void;onGoToConfig:()=>void;onReturn:()=>void;
+  theme:'white'|'black';onThemeChange:(theme:'white'|'black')=>void;
 }
 interface Target {position:number;videoId:string|null;seconds:number;}
-export default function PlayerPanel({playlists,activeUrl,onSelectUrl,zoom,onZoomChange,onGoToConfig,onReturn}:Props) {
+export default function PlayerPanel({playlists,activeUrl,onSelectUrl,zoom,onZoomChange,onGoToConfig,onReturn,theme,onThemeChange}:Props) {
   const source=parseYouTubeUrl(activeUrl);
   const [started,setStarted]=useState(false),[ready,setReady]=useState(false),[compact,setCompact]=useState(false);
+  const [isPlaying,setIsPlaying]=useState(false);
   const [error,setError]=useState(''),[message,setMessage]=useState(''),[title,setTitle]=useState('');
   const [number,setNumber]=useState('1'),[position,setPosition]=useState(1),[videoId,setVideoId]=useState<string|null>(source.videoId);
   const [bookmark]=useState(()=>loadBookmark(source.key));
@@ -77,7 +81,7 @@ export default function PlayerPanel({playlists,activeUrl,onSelectUrl,zoom,onZoom
           },
           onStateChange:(event:{data:number})=>{
             if(cancelled) return;
-            playing.current=event.data===1;
+            playing.current=event.data===1;setIsPlaying(event.data===1);
             if(event.data===1){setNeedsResume(false);setError('');}
             if(event.data===1||event.data===2) capture();
           },
@@ -140,31 +144,56 @@ export default function PlayerPanel({playlists,activeUrl,onSelectUrl,zoom,onZoom
   }
   const mobileApp=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   const external=watchUrl(source.listId,videoId,position,last.current?.seconds||0);
-  return <section id="musica" className="player-card" aria-label="Música / YouTube">
-    <header className="player-heading"><div><span className="eyebrow">MIOTUBE · Phonoplayer</span><h1>Música / YouTube</h1></div><button onClick={onReturn}>Volver a pantalla vacía ↑</button></header>
-    <div className="row playlist-tabs">{playlists.map(pl=><button key={pl.id} className={pl.url===activeUrl?'accent':''} aria-pressed={pl.url===activeUrl} onClick={()=>onSelectUrl(pl.url)}>{pl.label}</button>)}<button onClick={()=>{const details=document.getElementById('listas') as HTMLDetailsElement|null;if(details)details.open=true;onGoToConfig();}}>Mis listas +</button></div>
-    {!source.embedUrl?<p className="notice">{activeUrl?'El enlace no es compatible. Agrega una lista o un video de YouTube.':'Agrega tu primera lista en «Mis listas +».'}</p>:<>
-      <div className="row number-form"><label htmlFor="numero">Elemento de la lista</label><input id="numero" type="number" inputMode="numeric" min="1" max="100000" step="1" value={number} onChange={e=>setNumber(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')jump();}}/><button className="accent" onClick={jump}>{started?'Ir al elemento':'Iniciar desde este elemento'}</button></div>
-      {source.listId&&catalogStatus==='error'&&<p className="muted">No se pudieron confirmar todas las posiciones originales. El salto por número usará el orden disponible en el reproductor de YouTube.</p>}
-      {!started&&bookmark&&<div className="notice">Última reproducción: elemento {bookmark.position}, minuto {Math.floor(bookmark.seconds/60)}:{String(Math.floor(bookmark.seconds%60)).padStart(2,'0')}. <button onClick={()=>select(bookmark)}>Continuar donde me quedé</button></div>}
-      {started&&<>
-        <div className="row controls">
-          <button disabled={!ready} aria-label="Video anterior" onClick={()=>player.current?.previousVideo()}>⏮ Anterior</button>
-          <button disabled={!ready} onClick={()=>player.current?.playVideo()}>▶ Reproducir</button>
-          <button disabled={!ready} onClick={()=>{player.current?.pauseVideo();capture();}}>⏸ Pausar</button>
-          <button disabled={!ready} aria-label="Video siguiente" onClick={()=>player.current?.nextVideo()}>Siguiente ⏭</button>
-          <button aria-expanded={!compact} onClick={()=>setCompact(v=>!v)}>{compact?'Ampliar controles':'Controles compactos'}</button>
-        </div>
-        {title&&<p className="now-playing">{catalog.some(t=>t.position===position&&t.videoId===videoId)?'Posición original':'Elemento del reproductor'} {position} · {title}</p>}
-        {needsResume&&<p role="status" className="notice">La reproducción puede haberse pausado al salir. <button onClick={resume}>Reanudar</button></p>}
-        {!compact&&<div className="row zoom"><label htmlFor="zoom">Tamaño del video</label><input id="zoom" type="range" min={ZOOM_MIN} max={ZOOM_MAX} value={zoom} onChange={e=>onZoomChange(Number(e.target.value))}/><span>{zoom}%</span>{pipSupported&&<button disabled={!ready} onClick={()=>void openPip()}>Ventana flotante</button>}</div>}
-      </>}
-      {error&&<p role="alert" className="notice">{error} <button onClick={restart}>Recargar reproductor</button></p>}
-      {message&&<p role="status" className="muted">{message}</p>}
-      <div className="row"><a className="button-link" href={external} target="_blank" rel="noreferrer">Abrir en YouTube ↗</a>{mobileApp&&<a className="button-link" href={external.replace('https://www.youtube.com/','youtube://www.youtube.com/')}>Abrir en la app de YouTube</a>}{started&&<button onClick={restart}>Recargar reproductor</button>}</div>
+  function togglePlayback(){
+    setMessage('');
+    if(!started){jump();return;}
+    if(isPlaying){player.current?.pauseVideo();capture();}else player.current?.playVideo();
+  }
+  function editLists(){const details=document.getElementById('listas') as HTMLDetailsElement|null;if(details)details.open=true;onGoToConfig();}
+  return <section id="musica" className={`player-card ${compact?'is-compact':''}`} aria-label="Música / YouTube">
+    <header className="player-heading">
+      <h1 className="wordmark"><span className="brand-dot"/>MIOTUBE</h1>
+      <div className="header-actions">
+        <button className="icon-button" aria-label="Volver a pantalla vacía" title="Pantalla vacía" onClick={onReturn}><Icon name="blank"/></button>
+        <Popover label="Apariencia" icon={theme==='black'?'moon':'sun'}>
+          <p className="menu-label">Fondo de pantalla</p>
+          <div className="theme-choices">
+            <button className="theme-choice" aria-label="Fondo blanco" aria-pressed={theme==='white'} onClick={()=>onThemeChange('white')}><span className="swatch white"/>Blanco{theme==='white'&&<Icon name="check" size={15}/>}</button>
+            <button className="theme-choice" aria-label="Fondo negro" aria-pressed={theme==='black'} onClick={()=>onThemeChange('black')}><span className="swatch black"/>Negro{theme==='black'&&<Icon name="check" size={15}/>}</button>
+          </div>
+        </Popover>
+        <Popover label="Más opciones">
+          {started&&<>
+            <label className="menu-slider" htmlFor="zoom"><span>Tamaño del video <span>{zoom}%</span></span><input id="zoom" type="range" min={ZOOM_MIN} max={ZOOM_MAX} value={zoom} onChange={e=>onZoomChange(Number(e.target.value))}/></label>
+            <label className="menu-check"><span>Vista compacta</span><input type="checkbox" checked={compact} onChange={e=>setCompact(e.target.checked)}/></label>
+          </>}
+          {source.embedUrl&&<a className="menu-item" href={external} target="_blank" rel="noreferrer"><Icon name="external" size={17}/>Abrir en YouTube</a>}
+          {source.embedUrl&&mobileApp&&<a className="menu-item" href={external.replace('https://www.youtube.com/','youtube://www.youtube.com/')}><Icon name="external" size={17}/>Abrir en la app de YouTube</a>}
+          {started&&pipSupported&&<button className="menu-item" disabled={!ready} onClick={()=>void openPip()}><Icon name="expand" size={17}/>Ventana flotante</button>}
+          {started&&<button className="menu-item" onClick={restart}><Icon name="refresh" size={17}/>Recargar reproductor</button>}
+          <details className="menu-info"><summary>Información de reproducción</summary><p>El reproductor permanece al final cuando vuelves a la pantalla vacía. La continuidad fuera de la app o con el teléfono bloqueado depende de YouTube y del navegador.</p></details>
+        </Popover>
+      </div>
+    </header>
+    <nav className="playlist-tabs" aria-label="Mis listas">{playlists.map(pl=><button key={pl.id} className={pl.url===activeUrl?'selected':''} aria-pressed={pl.url===activeUrl} onClick={()=>onSelectUrl(pl.url)}>{pl.label}</button>)}<button className="add-list" aria-label="Administrar mis listas" title="Administrar mis listas" onClick={editLists}><Icon name="plus" size={19}/></button></nav>
+    {!source.embedUrl?<div className="empty-state"><Icon name="play" size={30}/><h2>Tu música, a tu ritmo</h2><p>{activeUrl?'El enlace no es compatible. Agrega una lista o un video de YouTube.':'Añade tu primera lista para empezar.'}</p><button className="accent" onClick={editLists}>Añadir una lista</button></div>:<>
+      <div className="now-playing">
+        <span className="eyebrow">{started?`${isPlaying?'Reproduciendo':'En pausa'} · ${position}`:'LISTO PARA ESCUCHAR'}</span>
+        <h2>{title||playlists.find(pl=>pl.url===activeUrl)?.label||'Tu lista de YouTube'}</h2>
+      </div>
       {started&&<div className="video-slot" ref={slot} style={{height:compact?220:`max(220px, ${zoom}svh)`}}><div ref={host} className="video-host" style={{width:'100%',height:'100%'}}><div ref={mount} className="video-mount" style={{width:'100%',height:'100%'}}/></div></div>}
-      {started&&!ready&&!error&&<p role="status">Conectando con YouTube…</p>}
-      <p className="muted small">Al volver a la pantalla vacía, el reproductor permanece al final. La reproducción con la pantalla bloqueada o fuera de la app depende de YouTube y del navegador.</p>
+      <div className="transport" aria-label="Controles de reproducción">
+        <button className="transport-side" disabled={!ready||!source.listId} aria-label="Video anterior" onClick={()=>{setMessage('');player.current?.previousVideo();}}><Icon name="previous" size={25}/></button>
+        <button className="transport-main" disabled={started&&!ready} aria-label={isPlaying?'Pausar':'Reproducir'} onClick={togglePlayback}><Icon name={isPlaying?'pause':'play'} size={28} filled={!isPlaying}/></button>
+        <button className="transport-side" disabled={!ready||!source.listId} aria-label="Video siguiente" onClick={()=>{setMessage('');player.current?.nextVideo();}}><Icon name="next" size={25}/></button>
+      </div>
+      {source.listId&&<div className="number-form"><label htmlFor="numero">Ir al n.º</label><input id="numero" aria-label="Elemento de la lista" type="number" inputMode="numeric" min="1" max="100000" step="1" value={number} onChange={e=>setNumber(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')jump();}}/><button className="number-go icon-button" aria-label="Ir al elemento" onClick={jump}><Icon name="next" size={18}/></button></div>}
+      {!started&&bookmark&&<button className="continue-button" onClick={()=>select(bookmark)}><Icon name="play" size={17}/><span>Continuar donde me quedé<small>Elemento {bookmark.position} · {Math.floor(bookmark.seconds/60)}:{String(Math.floor(bookmark.seconds%60)).padStart(2,'0')}</small></span><Icon name="external" size={16}/></button>}
+      {source.listId&&catalogStatus==='error'&&<p className="notice">No se pudieron confirmar las posiciones originales. El salto numérico usará el orden disponible en YouTube.</p>}
+      {needsResume&&<p role="status" className="notice">La reproducción puede haberse pausado. <button onClick={resume}>Reanudar</button></p>}
+      {error&&<p role="alert" className="notice">{error} <button onClick={restart}>Reintentar</button></p>}
+      {message&&<p role="status" className="muted feedback">{message}</p>}
+      {started&&!ready&&!error&&<p role="status" className="muted feedback">Conectando con YouTube…</p>}
       {source.listId&&<PlaylistLibrary listId={source.listId} currentPosition={position} onTracks={setCatalog} onStatus={setCatalogStatus} onSelect={track=>select({position:track.position,videoId:track.videoId,seconds:0})}/>}
     </>}
   </section>;

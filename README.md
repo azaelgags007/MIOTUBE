@@ -1,10 +1,13 @@
-# MIOTUBE · Phonoplayer 2.0.0
+# MIOTUBE · Phonoplayer 2.1.0
 
-Reproductor personal de YouTube instalable en iPhone como PWA. Pantalla inicial blanca o negra y reproductor al final de la página.
+Reproductor personal de YouTube instalable en iPhone como PWA. Pantalla inicial completamente blanca o negra, accesos temporales al tocar y reproductor al final de la página.
 
 ## Lo que incluye
 
-- Fondo blanco o negro, recordado al volver a abrir.
+- Fondo blanco o negro, recordado al volver a abrir. Los botones no permanecen visibles: toca para mostrar accesos durante unos segundos.
+- Encabezado discreto, apariencia con círculos de color, iconos uniformes y opciones secundarias en el menú de tres puntos.
+- Anterior, reproducir/pausar y siguiente en una sola fila; salto por número en una línea.
+- Miniaturas en móvil, títulos de dos líneas ampliables y catálogo con un único desplazamiento de página.
 - Acceso «Ir a música / YouTube» y «Volver a pantalla vacía».
 - Un solo reproductor que permanece montado al volver arriba o compactar controles. Tamaño visible mínimo de 200 px; no se oculta ni se lleva a altura cero.
 - Listas guardadas, edición, eliminación, orden y selección activa, conservando las claves de almacenamiento de la versión anterior.
@@ -17,10 +20,10 @@ Reproductor personal de YouTube instalable en iPhone como PWA. Pantalla inicial 
 
 ## Uso
 
-1. Abre la aplicación y pulsa «Ir a música / YouTube».
-2. En «Mis listas +», añade un enlace de YouTube con un nombre. Las listas guardadas en la versión anterior se conservan si usas la misma dirección web y el mismo navegador.
+1. Abre la aplicación, toca el fondo vacío y pulsa «Ir a música / YouTube».
+2. En el botón «+» junto a tus listas, añade un enlace de YouTube con un nombre. Las listas guardadas en la versión anterior se conservan si usas la misma dirección web y el mismo navegador.
 3. Inicia por número, abre el contenido para elegir un título, o pulsa «Continuar donde me quedé» si hay una reproducción guardada.
-4. Pulsa «Volver a pantalla vacía» para regresar al fondo. El reproductor queda abajo, dentro de la página.
+4. Pulsa el icono de pantalla (cuadrado) del encabezado para regresar al fondo. El reproductor queda abajo, dentro de la página.
 5. En iPhone: Safari → Compartir → Añadir a pantalla de inicio.
 
 ## Listado sin clave personal
@@ -35,13 +38,13 @@ La calidad y la continuidad del audio fuera de la aplicación, al desplazarse fu
 
 ## Proyecto y despliegue en Vercel
 
-Este ZIP incluye código fuente, iconos, función del servidor, pruebas, configuración y la compilación `dist/`. No se ha publicado sobre tu proyecto actual.
+Este ZIP incluye código fuente, iconos, función del servidor, pruebas, configuración y la compilación `dist/`. El código se prepara para publicarse en el proyecto existente.
 
 Para actualizar el proyecto existente, coloca el contenido de esta carpeta en la raíz del repositorio MIOTUBE y conserva su conexión con Vercel. `package.json` declara Node 22.x y `vercel.json` define el comando y la salida. No hay secretos que introducir.
 
 **Publica el proyecto completo, no solo `dist/`:** el listado necesita la función de servidor de `api/` y su módulo `server/`. Abrir `index.html` por doble clic o subir únicamente archivos estáticos no ejecuta esa función.
 
-Después de publicar, cierra y vuelve a abrir la PWA para recoger el nuevo service worker (`phonoplayer-v2.0.0`). Los favoritos y la reproducción se guardan localmente; no hay sincronización entre dispositivos.
+Después de publicar, cierra y vuelve a abrir la PWA para recoger el nuevo service worker (`phonoplayer-v2.1.0`). Los favoritos y la reproducción se guardan localmente; no hay sincronización entre dispositivos.
 
 ## Desarrollo y verificación
 

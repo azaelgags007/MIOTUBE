@@ -2,6 +2,8 @@ import {useEffect,useRef,useState} from 'react';
 import type {CatalogPage,Track} from '../types';
 import {readJson,writeJson} from '../utils/storage';
 import {watchUrl} from '../utils/youtube';
+import Icon from './Icon';
+import Popover from './Popover';
 interface Props {listId:string; currentPosition:number; onSelect:(track:Track)=>void; onTracks:(items:Track[])=>void; onStatus:(status:'loading'|'ready'|'error')=>void;}
 export default function PlaylistLibrary({listId,currentPosition,onSelect,onTracks,onStatus}:Props) {
   const [open,setOpen]=useState(false), [query,setQuery]=useState('');
@@ -12,6 +14,7 @@ export default function PlaylistLibrary({listId,currentPosition,onSelect,onTrack
     const f=readJson<unknown>(`miotube_favorites:${listId}`,[]); return Array.isArray(f)?f.filter(Number.isSafeInteger):[];
   });
   const [onlyFavorites,setOnlyFavorites]=useState(false);
+  const [expanded,setExpanded]=useState<number[]>([]);
   const abort=useRef<AbortController|null>(null);
   useEffect(()=>{void load();return ()=>abort.current?.abort();},[]);
   async function load(cursor:string|null=null) {
@@ -43,28 +46,39 @@ export default function PlaylistLibrary({listId,currentPosition,onSelect,onTrack
   }
   const filtered=items.filter(t=>(!onlyFavorites||favorites.includes(t.position))&&(!query.trim()||(/^\d+$/.test(query.trim())?String(t.position)===String(Number(query.trim())):t.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))));
   return <div className="library">
-    <button className="wide" aria-expanded={open} onClick={()=>{setOpen(!open);if(!open&&!loaded) void load();}}>{open?'Ocultar contenido de la lista':'Ver contenido de la lista'}</button>
+    <div className="library-heading">
+      <button className="library-toggle" aria-label={open?'Ocultar contenido de la lista':'Ver contenido de la lista'} aria-expanded={open} onClick={()=>{setOpen(!open);if(!open&&!loaded)void load();}}><span>Contenido <span className="count">{items.length}</span></span><Icon name={open?'up':'down'} size={17}/></button>
+      <Popover label="Información de la lista" icon="info">
+        <p className="menu-label">Acerca del contenido</p><p className="info-copy">Los números conservan la posición original de YouTube, incluso al buscar. Los videos no disponibles no renumeran la lista.</p>
+        <p className="info-copy">{loaded?`${items.length} elementos cargados${next?' · faltan páginas':''}.`:'Consultando contenido.'}</p>
+        {stamp&&<p className="info-copy">Actualizado: {stamp}. Si editaste la lista, pulsa Actualizar.</p>}
+      </Popover>
+    </div>
     {open&&<div className="library-body">
-      <div className="row"><input aria-label="Buscar por título o número" placeholder="Buscar por título o número original" value={query} onChange={e=>setQuery(e.target.value)}/><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
-      <label className="check"><input type="checkbox" checked={onlyFavorites} onChange={e=>setOnlyFavorites(e.target.checked)}/> Solo favoritos</label>
-      <p className="muted">Se conserva la posición original, incluso al buscar. {items.length} elementos cargados{next?' · hay más por cargar':loaded?' · lista cargada':''}.</p>
-      {stamp&&<p className="muted small">Consultado: {stamp}. Si editaste la lista en YouTube, pulsa Actualizar.</p>}
+      <div className="search-tools">
+        <div className="search-box"><Icon name="search" size={18}/><input type="search" aria-label="Buscar por título o número" placeholder="Buscar título o n.º" value={query} onChange={e=>setQuery(e.target.value)}/></div>
+        <button className={`icon-button favorite-filter ${onlyFavorites?'active':''}`} aria-label="Solo favoritos" aria-pressed={onlyFavorites} title="Solo favoritos" onClick={()=>setOnlyFavorites(v=>!v)}><Icon name="star" filled={onlyFavorites}/></button>
+        <button className="icon-button" aria-label="Actualizar" title="Actualizar lista" onClick={()=>void load()} disabled={busy}><Icon name="refresh"/></button>
+      </div>
       {notice&&<p role="status" className="notice">{notice}</p>}
       {error&&<div role="alert" className="notice">{error} <button onClick={()=>void load(loaded?next:null)}>Reintentar</button> <a href={watchUrl(listId,null)} target="_blank" rel="noreferrer">Abrir lista en YouTube ↗</a></div>}
       <ol className="track-list">
-        {filtered.map(track=><li key={track.position} value={track.position} className={track.position===currentPosition?'current':''}>
+        {filtered.map(track=><li key={track.position} value={track.position} className={`${track.position===currentPosition?'current':''} ${expanded.includes(track.position)?'expanded':''}`}>
           <span className="track-number">{track.position}</span>
-          {track.thumbnail&&<img loading="lazy" src={track.thumbnail} alt="" width="96" height="54"/>}
+          {track.thumbnail?<img loading="lazy" src={track.thumbnail} alt="" width="96" height="54"/>:<span className="track-placeholder"><Icon name="play" size={17}/></span>}
           <button className="track-title" disabled={!track.available} onClick={()=>onSelect(track)} aria-label={`Reproducir ${track.position}: ${track.title}`}>
-            <strong>{track.title}</strong><span className="muted small">{track.available?`${track.author} ${track.duration}`:'No disponible en el reproductor'}</span>
+            <strong>{track.title}</strong><span className="track-meta">{track.available?`${track.author}${track.author&&track.duration?' · ':''}${track.duration}`:'No disponible'}</span>
           </button>
-          <button className="star" aria-label={`${favorites.includes(track.position)?'Quitar de':'Añadir a'} favoritos: ${track.title}`} aria-pressed={favorites.includes(track.position)} onClick={()=>toggleFavorite(track.position)}>{favorites.includes(track.position)?'★':'☆'}</button>
-          {track.videoId&&<a className="external" href={watchUrl(listId,track.videoId,track.position)} target="_blank" rel="noreferrer" aria-label={`Abrir ${track.title} en YouTube`}>↗</a>}
+          <button className="star icon-button" aria-label={`${favorites.includes(track.position)?'Quitar de':'Añadir a'} favoritos: ${track.title}`} aria-pressed={favorites.includes(track.position)} onClick={()=>toggleFavorite(track.position)}><Icon name="star" size={18} filled={favorites.includes(track.position)}/></button>
+          <Popover className="track-menu" label={`Opciones de ${track.title}`}>
+            <button className="menu-item" onClick={()=>setExpanded(v=>v.includes(track.position)?v.filter(n=>n!==track.position):[...v,track.position])}>{expanded.includes(track.position)?'Acortar título':'Ver título completo'}</button>
+            {track.videoId&&<a className="menu-item" href={watchUrl(listId,track.videoId,track.position)} target="_blank" rel="noreferrer"><Icon name="external" size={17}/>Abrir en YouTube</a>}
+          </Popover>
         </li>)}
       </ol>
-      {loaded&&!filtered.length&&!busy&&<p role="status">{items.length?'No hay coincidencias en los elementos cargados.':'Esta lista no contiene elementos visibles.'}</p>}
-      {busy&&<p role="status">Cargando contenido…</p>}
-      {next&&<button className="wide" disabled={busy} onClick={()=>void load(next)}>Cargar siguientes elementos</button>}
+      {loaded&&!filtered.length&&!busy&&<p className="muted empty-results" role="status">{items.length?'No hay coincidencias en los elementos cargados.':'Esta lista no contiene elementos visibles.'}</p>}
+      {busy&&<p role="status" className="muted loading-line"><span className="loading-dot"/>Cargando contenido…</p>}
+      {next&&<button className="load-more" disabled={busy} onClick={()=>void load(next)}>Cargar siguientes elementos</button>}
     </div>}
   </div>;
 }
