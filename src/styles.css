@@ -137,3 +137,6 @@ html.blank-active::-webkit-scrollbar {display:none;}
 @media(min-width:600px){.workspace{padding-inline:32px}.now-playing h2{font-size:24px}.track-title strong{font-size:14px}.track-list li{grid-template-columns:24px 80px minmax(0,1fr) 44px 36px;column-gap:12px;padding:16px 8px}.track-list img,.track-placeholder{width:80px;height:48px}.track-meta{font-size:11px}.transport{gap:40px}}
 @media(max-width:360px){.workspace{padding-inline:16px}.track-list li{grid-template-columns:16px 48px minmax(0,1fr) 32px 28px;column-gap:5px}.track-list img,.track-placeholder{width:48px;height:36px}.track-title strong{font-size:12px}.star.icon-button{width:32px;min-width:32px}.track-menu>.icon-button{width:28px;min-width:28px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important;}}
+/* Keep navigation available while browsing a long catalog. */
+.player-heading {position:sticky;top:env(safe-area-inset-top,0px);z-index:40;background:var(--base);padding-block:8px;margin-top:-8px;}
+@media(hover:hover){.transport-main:hover:not(:disabled){background:var(--accent);filter:brightness(1.05);}}

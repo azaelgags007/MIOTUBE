@@ -81,7 +81,7 @@ export default function PlayerPanel({playlists,activeUrl,onSelectUrl,zoom,onZoom
           },
           onStateChange:(event:{data:number})=>{
             if(cancelled) return;
-            playing.current=event.data===1;setIsPlaying(event.data===1);
+            playing.current=event.data===1;setIsPlaying(event.data===1||event.data===3);
             if(event.data===1){setNeedsResume(false);setError('');}
             if(event.data===1||event.data===2) capture();
           },
